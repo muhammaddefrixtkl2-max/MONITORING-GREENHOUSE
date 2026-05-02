@@ -55,19 +55,40 @@ body {
 .off { background: gray; }
 .on { background: green; }
 
-/* NOTIF BAHAYA */
-#notifBahaya {
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: red;
-    color: white;
-    padding: 15px 25px;
-    border-radius: 10px;
-    font-weight: bold;
-    display: none;
-    z-index: 999;
+      /* ALARM */
+        #notifBahaya {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: red;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        #btnStopAlarm {
+            display: none;
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: black;
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+/* 🚨 KEDIP MERAH */
+.blink {
+    animation: blinkBg 0.5s infinite;
+}
+
+@keyframes blinkBg {
+    0% { background-color: red; }
+    50% { background-color: white; }
+    100% { background-color: red; }
 }
 
 /* GRAFIK */
@@ -102,239 +123,187 @@ th {
 
 <body>
 
-<div id="datetime"></div>
+    <div id="datetime"></div>
 
-<h2>Dashboard Monitoring IoT</h2>
+    <h2>Dashboard IoT</h2>
 
-<!-- NOTIF -->
-<div id="notifBahaya">⚠️ BAHAYA! Pompa Pestisida Aktif! Jangan masuk greenhouse!</div>
+    <div id="notifBahaya">⚠️ Pompa Pestisida Aktif!</div>
+    <button id="btnStopAlarm" onclick="stopAlarm()">🔕 Matikan Alarm</button>
+    <audio id="alarmSound" src="alarm_clock.ogg"></audio>
 
-<!-- SENSOR -->
-<div id="cardSuhu" class="card">
-    <div>Suhu</div>
-    <div id="suhu" class="nilai">-- °C</div>
-</div>
+    <!-- SENSOR -->
+    <div class="card">Suhu<br><span id="suhu">--</span></div>
+    <div class="card">Kelembapan<br><span id="kelembapan">--</span></div>
+    <div class="card">Cahaya<br><span id="cahaya">--</span></div>
 
-<div class="card">
-    <div>Kelembapan</div>
-    <div id="kelembapan" class="nilai">-- %</div>
-</div>
+    <!-- BUTTON -->
+    <h3>Kontrol</h3>
+    <button id="lampu" class="btn off" onclick="toggle(this)">Lampu OFF</button>
+    <button id="kipas" class="btn off" onclick="toggle(this)">Kipas OFF</button>
+    <button id="pestisida" class="btn off" onclick="toggle(this)">Pestisida OFF</button>
+    <button id="pendingin" class="btn off" onclick="toggle(this)">Pendingin OFF</button>
 
-<div class="card">
-    <div>Cahaya</div>
-    <div id="cahaya" class="nilai">-- lux</div>
-</div>
+    <!-- GRAFIK -->
+    <div class="grafik-container">
+        <canvas id="chartSuhu"></canvas>
+        <canvas id="chartKelembapan"></canvas>
+        <canvas id="chartCahaya"></canvas>
+    </div>
 
-<!-- BUTTON -->
-<h3>Kontrol</h3>
+    <!-- HISTORI SENSOR -->
+    <h3>Histori Sensor</h3>
+    <table id="tabelSensor">
+        <tr><th>Waktu</th><th>Suhu</th><th>Kelembapan</th><th>Cahaya</th></tr>
+    </table>
 
-<button id="lampu" class="btn off" onclick="toggle(this)">Lampu OFF</button>
-<button id="kipas" class="btn off" onclick="toggle(this)">Kipas OFF</button>
-<button id="pestisida" class="btn off" onclick="toggle(this)">Pompa Pestisida OFF</button>
-<button id="pendingin" class="btn off" onclick="toggle(this)">Pompa Pendingin OFF</button>
+    <!-- HISTORI PERANGKAT -->
+    <h3>Histori Perangkat</h3>
+    <table id="tabelPerangkat">
+        <tr><th>Perangkat</th><th>Mulai</th><th>Selesai</th><th>Durasi</th></tr>
+    </table>
 
-<!-- GRAFIK -->
-<div class="grafik-container">
-    <canvas id="chartSuhu"></canvas>
-    <canvas id="chartKelembapan"></canvas>
-    <canvas id="chartCahaya"></canvas>
-</div>
+    <script>
 
-<!-- HISTORI SENSOR -->
-<h3>Histori Sensor</h3>
-<table id="tabelSensor">
-<tr>
-<th>Waktu</th>
-<th>Suhu</th>
-<th>Kelembapan</th>
-<th>Cahaya</th>
-</tr>
-</table>
+        // ===== JAM =====
+        setInterval(() => {
+            let n = new Date();
+            datetime.innerHTML = n.toLocaleDateString() + "<br>" + n.toLocaleTimeString();
+        }, 1000);
 
-<!-- HISTORI BUTTON -->
-<h3>Histori Durasi Perangkat</h3>
-<table id="tabelButton">
-<tr>
-<th>Perangkat</th>
-<th>Mulai</th>
-<th>Selesai</th>
-<th>Durasi</th>
-</tr>
-</table>
+        // ===== STATUS & WAKTU =====
+        let statusPerangkat = { lampu: "OFF", kipas: "OFF", pendingin: "OFF", pestisida: "OFF" };
+        let waktuMulai = { lampu: null, kipas: null, pendingin: null, pestisida: null };
 
-<script>
+        // ===== DURASI =====
+        function formatDurasi(ms) {
+            let s = Math.floor(ms / 1000);
+            return String(Math.floor(s / 3600)).padStart(2, '0') + ":" +
+                String(Math.floor((s % 3600) / 60)).padStart(2, '0') + ":" +
+                String(s % 60).padStart(2, '0');
+        }
 
-// ===== JAM =====
-function updateJam() {
-    let now = new Date();
-    document.getElementById("datetime").innerHTML =
-        now.toLocaleDateString('id-ID') + "<br>" +
-        now.toLocaleTimeString('id-ID');
-}
-setInterval(updateJam, 1000);
+        // ===== ALARM =====
+        function showNotifBahaya() {
+            notifBahaya.style.display = "block";
+            btnStopAlarm.style.display = "block";
+            alarmSound.loop = true; alarmSound.play();
+            document.body.classList.add("blink");
+        }
+        function stopAlarm() {
+            notifBahaya.style.display = "none";
+            btnStopAlarm.style.display = "none";
+            alarmSound.pause();
+            document.body.classList.remove("blink");
+        }
 
-// ===== STATUS =====
-let statusPerangkat = {
-    lampu: "OFF",
-    kipas: "OFF",
-    pendingin: "OFF",
-    pestisida: "OFF"
-};
+        // ===== ON/OFF =====
+        function setON(btn, nama) {
+            if (statusPerangkat[btn.id] === "ON") return;
+            btn.classList.replace("off", "on");
+            btn.innerHTML = nama + " ON";
+            statusPerangkat[btn.id] = "ON";
+            waktuMulai[btn.id] = new Date();
 
-let waktuMulai = {
-    lampu: null,
-    kipas: null,
-    pendingin: null,
-    pestisida: null
-};
+            if (btn.id === "pestisida") showNotifBahaya();
+        }
 
-// ===== NOTIF =====
-function showNotifBahaya() {
-    let notif = document.getElementById("notifBahaya");
-    notif.style.display = "block";
+        function setOFF(btn, nama) {
+            if (statusPerangkat[btn.id] === "OFF") return;
 
-    setTimeout(() => {
-        notif.style.display = "none";
-    }, 3000);
-}
+            let selesai = new Date();
+            let mulai = waktuMulai[btn.id];
+            if (!mulai) return;
 
-// ===== FORMAT DURASI =====
-function formatDurasi(ms) {
-    let detik = Math.floor(ms / 1000);
-    let jam = Math.floor(detik / 3600);
-    let menit = Math.floor((detik % 3600) / 60);
-    let sisa = detik % 60;
+            let durasi = formatDurasi(selesai - mulai);
 
-    return `${String(jam).padStart(2,'0')}:${String(menit).padStart(2,'0')}:${String(sisa).padStart(2,'0')}`;
-}
+            let row = tabelPerangkat.insertRow();
+            row.insertCell(0).innerHTML = btn.id;
+            row.insertCell(1).innerHTML = mulai.toLocaleTimeString();
+            row.insertCell(2).innerHTML = selesai.toLocaleTimeString();
+            row.insertCell(3).innerHTML = durasi;
 
-// ===== ON =====
-function setON(btn, nama) {
-    if (statusPerangkat[btn.id] === "ON") return;
+            btn.classList.replace("on", "off");
+            btn.innerHTML = nama + " OFF";
 
-    btn.classList.replace("off", "on");
-    btn.innerHTML = nama + " ON";
+            statusPerangkat[btn.id] = "OFF";
+            waktuMulai[btn.id] = null;
 
-    statusPerangkat[btn.id] = "ON";
-    waktuMulai[btn.id] = new Date();
+            if (btn.id === "pestisida") stopAlarm();
+        }
 
-    // 🔥 NOTIF KHUSUS PESTISIDA
-    if (btn.id === "pestisida") {
-        showNotifBahaya();
-    }
-}
+        // ===== TOGGLE =====
+        function toggle(btn) {
+            btn.classList.contains("off") ?
+                setON(btn, btn.innerText.replace(" OFF", "")) :
+                setOFF(btn, btn.innerText.replace(" ON", ""));
+        }
 
-// ===== OFF =====
-function setOFF(btn, nama) {
-    if (statusPerangkat[btn.id] === "OFF") return;
+        // ===== HISTORI =====
+        let histori = [];
 
-    btn.classList.replace("on", "off");
-    btn.innerHTML = nama + " OFF";
+        // ===== MAIN =====
+        window.onload = function () {
 
-    let selesai = new Date();
-    let mulai = waktuMulai[btn.id];
-    if (!mulai) return;
+            const chartSuhu = new Chart(chartSuhuEl = document.getElementById('chartSuhu'), {
+                type: 'line', data: { labels: [], datasets: [{ label: 'Suhu', data: [] }] }, options: { animation: false }
+            });
+            const chartKelembapan = new Chart(document.getElementById('chartKelembapan'), {
+                type: 'line', data: { labels: [], datasets: [{ label: 'Kelembapan', data: [] }] }, options: { animation: false }
+            });
+            const chartCahaya = new Chart(document.getElementById('chartCahaya'), {
+                type: 'line', data: { labels: [], datasets: [{ label: 'Cahaya', data: [] }] }, options: { animation: false }
+            });
 
-    let durasi = formatDurasi(selesai - mulai);
+            function updateData() {
 
-    let row = document.getElementById("tabelButton").insertRow();
-    row.insertCell(0).innerHTML = btn.id;
-    row.insertCell(1).innerHTML = mulai.toLocaleTimeString();
-    row.insertCell(2).innerHTML = selesai.toLocaleTimeString();
-    row.insertCell(3).innerHTML = durasi;
+                let waktu = new Date().toLocaleTimeString();
+                let suhu = Math.floor(Math.random() * 11 + 25);
+                let kelembapan = Math.floor(Math.random() * 20 + 60);
+                let cahaya = Math.floor(Math.random() * 5000);
 
-    statusPerangkat[btn.id] = "OFF";
-    waktuMulai[btn.id] = null;
-}
+                document.getElementById("suhu").innerHTML = suhu;
+                document.getElementById("kelembapan").innerHTML = kelembapan;
+                document.getElementById("cahaya").innerHTML = cahaya;
 
-// ===== TOGGLE =====
-function toggle(btn) {
-    if (btn.classList.contains("off")) {
-        setON(btn, btn.innerText.replace(" OFF",""));
-    } else {
-        setOFF(btn, btn.innerText.replace(" ON",""));
-    }
-}
+                // otomatis
+                suhu > 30 ? setON(kipas, "Kipas") : setOFF(kipas, "Kipas");
+                suhu > 30 ? setON(pendingin, "Pendingin") : setOFF(pendingin, "Pendingin");
+                cahaya < 2500 ? setON(lampu, "Lampu") : setOFF(lampu, "Lampu");
 
-// ===== DATA =====
-let histori = [];
+                // grafik
+                chartSuhu.data.labels.push(waktu);
+                chartSuhu.data.datasets[0].data.push(suhu);
 
-window.onload = function () {
+                chartKelembapan.data.labels.push(waktu);
+                chartKelembapan.data.datasets[0].data.push(kelembapan);
 
-    const chartSuhu = new Chart(document.getElementById('chartSuhu'), {
-        type: 'line',
-        data: { labels: [], datasets: [{ label: 'Suhu', data: [] }] },
-        options: { animation: false }
-    });
+                chartCahaya.data.labels.push(waktu);
+                chartCahaya.data.datasets[0].data.push(cahaya);
 
-    const chartKelembapan = new Chart(document.getElementById('chartKelembapan'), {
-        type: 'line',
-        data: { labels: [], datasets: [{ label: 'Kelembapan', data: [] }] },
-        options: { animation: false }
-    });
+                chartSuhu.update();
+                chartKelembapan.update();
+                chartCahaya.update();
 
-    const chartCahaya = new Chart(document.getElementById('chartCahaya'), {
-        type: 'line',
-        data: { labels: [], datasets: [{ label: 'Cahaya', data: [] }] },
-        options: { animation: false }
-    });
+                // simpan histori
+                histori.push({ waktu, suhu, kelembapan, cahaya });
+            }
 
-    function updateData() {
+            // interval
+            setInterval(updateData, 5000);
 
-        let waktu = new Date().toLocaleTimeString();
+            // histori tampil
+            setInterval(() => {
+                let d = histori[histori.length - 1];
+                if (!d) return;
+                let r = tabelSensor.insertRow();
+                r.insertCell(0).innerHTML = d.waktu;
+                r.insertCell(1).innerHTML = d.suhu;
+                r.insertCell(2).innerHTML = d.kelembapan;
+                r.insertCell(3).innerHTML = d.cahaya;
+            }, 30000);
 
-        let suhu = Math.floor(Math.random()*11 + 25);
-        let kelembapan = Math.floor(Math.random()*20 + 60);
-        let cahaya = Math.floor(Math.random()*5000);
-
-        document.getElementById("suhu").innerHTML = suhu + " °C";
-        document.getElementById("kelembapan").innerHTML = kelembapan + " %";
-        document.getElementById("cahaya").innerHTML = cahaya + " lux";
-
-        // warna suhu
-        document.getElementById("cardSuhu").style.backgroundColor =
-            suhu > 30 ? "red" : "lightblue";
-
-        // otomatis
-        let lampu = document.getElementById("lampu");
-        let kipas = document.getElementById("kipas");
-        let pendingin = document.getElementById("pendingin");
-
-        suhu > 30 ? setON(kipas,"Kipas") : setOFF(kipas,"Kipas");
-        suhu > 30 ? setON(pendingin,"Pendingin") : setOFF(pendingin,"Pendingin");
-        cahaya < 2500 ? setON(lampu,"Lampu") : setOFF(lampu,"Lampu");
-
-        // grafik
-        chartSuhu.data.labels.push(waktu);
-        chartSuhu.data.datasets[0].data.push(suhu);
-        chartSuhu.update();
-
-        chartKelembapan.data.labels.push(waktu);
-        chartKelembapan.data.datasets[0].data.push(kelembapan);
-        chartKelembapan.update();
-
-        chartCahaya.data.labels.push(waktu);
-        chartCahaya.data.datasets[0].data.push(cahaya);
-        chartCahaya.update();
-
-        histori.push({ waktu, suhu, kelembapan, cahaya });
-    }
-
-    setInterval(updateData, 5000);
-
-    setInterval(() => {
-        let d = histori[histori.length-1];
-        if (!d) return;
-
-        let row = document.getElementById("tabelSensor").insertRow();
-        row.insertCell(0).innerHTML = d.waktu;
-        row.insertCell(1).innerHTML = d.suhu;
-        row.insertCell(2).innerHTML = d.kelembapan;
-        row.insertCell(3).innerHTML = d.cahaya;
-
-    }, 30000);
-};
-</script>
+        };
+    </script>
 
 </body>
 </html>
